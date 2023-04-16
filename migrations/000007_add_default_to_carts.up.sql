@@ -1,0 +1,2 @@
+ALTER TABLE carts
+    ALTER COLUMN cars_id SET DEFAULT '{}';
