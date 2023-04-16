@@ -9,7 +9,6 @@ import (
 	"flag"
 	_ "github.com/lib/pq"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -58,12 +57,10 @@ type application struct {
 
 func main() {
 	var cfg config
-	Port := os.Getenv("PORT")
-	PortInt, _ := strconv.Atoi(Port)
-	flag.IntVar(&cfg.port, "port", PortInt, "API server port")
+	flag.IntVar(&cfg.port, "port", 4000, "API server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
 
-	flag.StringVar(&cfg.db.dsn, "db-dsn", "postgres://texvofil:XO0ky1edyjB3FLZGq6go9xmR-RNTqrWi@trumpet.db.elephantsql.com/texvofil", "PostgreSQL DSN")
+	flag.StringVar(&cfg.db.dsn, "db-dsn", "postgres://postgres:12345@localhost/carmarket?sslmode=disable", "PostgreSQL DSN")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
 	flag.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m", "PostgreSQL max idle time")
@@ -88,6 +85,7 @@ func main() {
 	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "211542@astanait.edu.kz", "SMTP sender")
 
 	flag.Parse()
+
 	// Using new json oriented logger
 	logger := jsonlog.NewToActivate(os.Stdout, jsonlog.LevelInfo)
 
