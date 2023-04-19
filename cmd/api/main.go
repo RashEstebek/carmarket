@@ -76,13 +76,12 @@ func main() {
 	// Mailtrap settings as the default values. IMPORTANT: If you're following along,
 	// make sure to replace the default values for smtp-username and smtp-password
 	// with your own Mailtrap credentials.
-	flag.StringVar(&cfg.smtp.host, "smtp-host", "smtp-mail.outlook.com", "SMTP host")
+	flag.StringVar(&cfg.smtp.host, "smtp-host", "outlook.office365.com", "SMTP host")
 	flag.IntVar(&cfg.smtp.port, "smtp-port", 587, "SMTP port")
 	// use your own credentials here as username and password
-
-	flag.StringVar(&cfg.smtp.username, "smtp-username", "211542@astanait.edu.kz", "SMTP username")
-	flag.StringVar(&cfg.smtp.password, "smtp-password", "Ktl2021!", "SMTP password")
-	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "211542@astanait.edu.kz", "SMTP sender")
+	flag.StringVar(&cfg.smtp.username, "smtp-username", "211428@astanait.edu.kz", "SMTP username")
+	flag.StringVar(&cfg.smtp.password, "smtp-password", "Rik_Aitu2024*", "SMTP password")
+	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "211428@astanait.edu.kz", "SMTP sender")
 
 	flag.Parse()
 

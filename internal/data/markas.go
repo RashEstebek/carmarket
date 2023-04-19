@@ -64,7 +64,7 @@ func (m MarkaModel) Get(id int64) (*Marka, error) {
 func (m MarkaModel) Update(marka *Marka) error {
 	query := `
 			UPDATE markas
-			SET name = $1, country = $2, logo = $3
+			SET name = $1, producer = $2, logo = $3
 			WHERE id = $4
 			RETURNING id`
 	args := []any{
