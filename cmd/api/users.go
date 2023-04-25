@@ -14,6 +14,7 @@ func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Reque
 		Email    string `json:"email"`
 		Password string `json:"password"`
 		Role     string `json:"role"`
+		Cash     int64  `json:"cash"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -27,7 +28,7 @@ func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Reque
 		Email:     input.Email,
 		Activated: false,
 		Role:      input.Role,
-		Cash:      1000000,
+		Cash:      input.Cash,
 	}
 
 	err = user.Password.Set(input.Password)

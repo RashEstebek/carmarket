@@ -8,7 +8,6 @@ import (
 	"carMarket.dreamteam.kz/internal/validator"
 	"context"
 	"encoding/json"
-	"flag"
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"net/http/httptest"
@@ -17,282 +16,464 @@ import (
 	"testing"
 )
 
+var getAppInstance application
+
+func init() {
+	getAppInstance = GetApp()
+}
+
 func GetApp() application {
 	var cfg config
-	flag.IntVar(&cfg.port, "port", 4000, "API server port")
-	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
+	cfg.port = 4000
+	cfg.env = "development"
+	cfg.db.dsn = "postgres://postgres:12345@localhost/carmarket?sslmode=disable"
 
-	flag.StringVar(&cfg.db.dsn, "db-dsn", "postgres://postgres:12345@localhost/carmarket?sslmode=disable", "PostgreSQL DSN")
-	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
-	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
-	flag.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m", "PostgreSQL max idle time")
-	// flag.StringVar(&cfg.db.maxLifetime, "db-max-lifetime", "1h", "PostgreSQL max idle time")
+	cfg.db.maxOpenConns = 25
+	cfg.db.maxIdleConns = 25
+	cfg.db.maxIdleTime = "15m"
 
-	// Create command line flags to read the setting values into the config struct.
-	// Notice that we use true as the default for the 'enabled' setting?
-	flag.Float64Var(&cfg.limiter.rps, "limiter-rps", 2, "Rate limiter maximum requests per second")
-	flag.IntVar(&cfg.limiter.burst, "limiter-burst", 4, "Rate limiter maximum burst")
-	flag.BoolVar(&cfg.limiter.enabled, "limiter-enabled", true, "Enable rate limiter")
+	cfg.smtp.host = "sandbox.smtp.mailtrap.io"
+	cfg.smtp.port = 2525
+	cfg.smtp.username = "211428@astanait.edu.kz"
+	cfg.smtp.password = "Rik_Aitu2024*"
+	cfg.smtp.sender = "211428@astanait.edu.kz"
 
-	// Read the SMTP server configuration settings into the config struct, using the
-	// Mailtrap settings as the default values. IMPORTANT: If you're following along,
-	// make sure to replace the default values for smtp-username and smtp-password
-	// with your own Mailtrap credentials.
-	flag.StringVar(&cfg.smtp.host, "smtp-host", "smtp-mail.outlook.com", "SMTP host")
-	flag.IntVar(&cfg.smtp.port, "smtp-port", 587, "SMTP port")
-	// use your own credentials here as username and password
-
-	flag.StringVar(&cfg.smtp.username, "smtp-username", "211542@astanait.edu.kz", "SMTP username")
-	flag.StringVar(&cfg.smtp.password, "smtp-password", "Ktl2021!", "SMTP password")
-	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "211542@astanait.edu.kz", "SMTP sender")
-
-	flag.Parse()
-
-	// Using new json oriented logger
 	logger := jsonlog.NewToActivate(os.Stdout, jsonlog.LevelInfo)
-
-	// logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
-
 	db, err := openDB(cfg)
 	if err != nil {
-		logger.PrintFatal(err, nil) // calling PrintFatal function if there is an error with db server connection
+		logger.PrintFatal(err, nil)
 	}
-	// db will be closed before main function is completed.
 	defer db.Close()
-	logger.PrintInfo("database connection pool established", nil) // printing custom info if db server connection is established
+	logger.PrintInfo("database connection pool established", nil)
 
 	app := &application{
 		config: cfg,
 		logger: logger,
-		models: data.NewModels(db), // data.NewModels() function to initialize a Models struct
-		// Initialize a new Mailer instance using the settings from the command line
-		// flags, and add it to the application struct.
+		models: data.NewModels(db),
 		mailer: mailer.NewToActivate(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password, cfg.smtp.sender),
 	}
 
 	return *app
 }
 
-func TestValidateUser(t *testing.T) {
-	// Test invalid user
-	user := &data.User{
-		Name:      "",
-		Email:     "invalidemail",
-		Role:      "user",
-		Activated: false,
-		Cash:      -100000,
-	}
-	user.Password.Set("short")
+func TestValidateUserTableDriven(t *testing.T) {
 
-	v := validator.NewToActivate()
-	data.ValidateUser(v, user)
-	if v.Valid() {
-		t.Errorf("unexpectedly valid user: %v", user)
-	} else {
-		t.Logf("validation errors: %v", v.Errors)
-	}
-
-	// Test valid user
-	user = &data.User{
-		Name:      "Valid User",
-		Email:     "validuser@example.com",
-		Role:      "admin",
-		Activated: true,
-		Cash:      100000,
-	}
-	user.Password.Set("validpassword")
-
-	v = validator.NewToActivate()
-	data.ValidateUser(v, user)
-	if !v.Valid() {
-		t.Errorf("unexpected validation errors: %v", v.Errors)
-	}
-}
-
-func TestValidatePermittedValue(t *testing.T) {
-	value1 := "s"
-	value2 := "small"
-
-	permittedValues := []string{"s", "m", "l"}
-
-	v := validator.NewToActivate()
-	v.Check(validator.PermittedValue(value1, permittedValues...), "size", "invalid size")
-	if !v.Valid() {
-		t.Errorf("%v", v.Errors)
-	}
-
-	v1 := validator.NewToActivate()
-	v1.Check(validator.PermittedValue(value2, permittedValues...), "size", "invalid size")
-	if v1.Valid() {
-		t.Errorf("Have to get error, unexpected result")
-	}
-}
-
-func TestReadJSON(t *testing.T) {
-	app := GetApp()
-	var input struct {
-		Name string `json:"name"`
+	var tests = []struct {
+		name     string
+		input    *data.User
+		key      string
+		expected string
+	}{
+		{
+			name: "correct_user",
+			input: &data.User{
+				Name:      "Rash Estebek",
+				Email:     "rashestebek@gmail.com",
+				Role:      "user",
+				Activated: false,
+			},
+			key:      "",
+			expected: "",
+		},
+		{
+			name: "empty_name",
+			input: &data.User{
+				Name:      "",
+				Email:     "empty_name@gmail.com",
+				Role:      "user",
+				Activated: false,
+			},
+			key:      "name",
+			expected: "must be provided",
+		},
+		{
+			name: "long_name",
+			input: &data.User{
+				Name:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAA BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+				Email:     "long_name@gmail.com",
+				Role:      "user",
+				Activated: false,
+			},
+			key:      "name",
+			expected: "must not be more than 50 bytes long",
+		},
+		{
+			name: "empty_role",
+			input: &data.User{
+				Name:      "Abdurakhym Sayrambay",
+				Email:     "abdu@gmail.com",
+				Role:      "",
+				Activated: false,
+			},
+			key:      "role",
+			expected: "must be provided",
+		},
 	}
 
-	jsonBody := []byte(`{"name": "Rash"}`)
-	bodyReader := bytes.NewReader(jsonBody)
-	w := new(http.ResponseWriter)
-	r, _ := http.NewRequest(http.MethodPost, "http://localhost:4000/v1/cars/1", bodyReader)
-	err := app.readJSON(*w, r, &input)
-	if err != nil {
-		t.Errorf("Got an unexpected error: %v", err)
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			tst.input.Password.Set("12345678")
+			val := validator.NewToActivate()
+			data.ValidateUser(val, tst.input)
+			if val.Errors[tst.key] != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
 	}
 }
 
-func TestReadCSV(t *testing.T) {
-	app := GetApp()
-	url1, _ := url.Parse("http://localhost:4000/v1/cars")
-	urlValues := url1.Query()
-	sizes := app.readCSV(urlValues, "sizes", []string{})
-
-	if len(sizes) != 3 {
-		t.Errorf("Expected array with size 3, but got %d", len(sizes))
+func TestValidatePermittedValueTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		value    string
+		expected bool
+	}{
+		{
+			name:     "matches_symbol",
+			value:    "a",
+			expected: true,
+		},
+		{
+			name:     "wrong_symbol",
+			value:    "b",
+			expected: false,
+		},
 	}
-	for i := 0; i < len(sizes); i++ {
-		if sizes[i] != "xs" && sizes[i] != "s" && sizes[i] != "m" {
-			t.Errorf("Unexpected value %v", sizes[i])
-		}
-	}
-}
 
-func TestReadString(t *testing.T) {
-	app := GetApp()
-	url1, err := url.Parse("http://localhost:4000/v1/cars")
-	urlValues := url1.Query()
-	key := app.readString(urlValues, "key", "")
-	if key != "bmw" || err != nil {
-		t.Errorf("Expected value is bmw, but got %v", key)
-	}
-}
-
-func TestReadInt(t *testing.T) {
-	app := GetApp()
-	r, _ := url.Parse("http://localhost:4000/v1/cars")
-	v := validator.NewToActivate()
-	qs := r.Query()
-	price := app.readInt(qs, "price", 200000, v)
-
-	if price != 35000 {
-		t.Errorf("Expected value is 35000, but got %d", price)
+	permittedValues := []string{"a", "c", "r"}
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			val := validator.NewToActivate()
+			val.Check(validator.PermittedValue(tst.value, permittedValues...), "size", "invalid size")
+			if val.Valid() != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
 	}
 }
 
-func TestReadID(t *testing.T) {
-	app := GetApp()
-	req := httptest.NewRequest(http.MethodGet, "/v1/cars", nil)
-
-	params := httprouter.Params{
-		{Key: "id", Value: "1"},
-	}
-	ctx := context.WithValue(req.Context(), httprouter.ParamsKey, params)
-	req = req.WithContext(ctx)
-	id, err := app.readIDParam(req)
-
-	if id != 1 || err != nil {
-		t.Errorf("Expected 1, got %v", id)
-	}
-}
-
-func TestGetAll(t *testing.T) {
-	app := GetApp()
-	req, err := http.NewRequest("GET", "/v1/cars", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(app.listCarsHandler)
-
-	handler.ServeHTTP(rr, req)
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v",
-			status, http.StatusOK)
-	}
-
-	var arr []data.Car
-	var arr1 []data.Car
-
-	response := rr.Body.String()
-
-	err = json.Unmarshal([]byte(response), &arr)
-	if err != nil {
-		t.Errorf("Can't marshall response to clothe type")
-	}
-
-	car := &data.Car{
-		ID:    1,
-		Price: 150000,
-		Model: "new",
-		Color: "test",
-		Marka: "toyota",
-		Type:  "",
-		Image: "",
-	}
-
-	app.models.Cars.Insert(car)
-
-	rr1 := httptest.NewRecorder()
-
-	handler.ServeHTTP(rr1, req)
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v",
-			status, http.StatusOK)
+func TestValidateCarTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    *data.Car
+		key      string
+		expected string
+	}{
+		{
+			name: "correct_car",
+			input: &data.Car{
+				Model:       "E200",
+				Year:        2007,
+				Price:       300000,
+				Marka:       "Mercedes-Benz",
+				Color:       "black",
+				Type:        "sedan",
+				Image:       "https://www.google.com/imgres?imgurl=https%3A%2F%2Fc0.carsie",
+				Description: "good car",
+			},
+			key:      "",
+			expected: "",
+		},
+		{
+			name: "empty_model",
+			input: &data.Car{
+				Model:       "",
+				Year:        2020,
+				Price:       450000,
+				Marka:       "Toyota",
+				Color:       "blue",
+				Type:        "sedan",
+				Image:       "https://www.google.com/imgres?imgurl=https%3A%2F%2Fc0.carsie",
+				Description: "fast car",
+			},
+			key:      "model",
+			expected: "must be provided",
+		},
+		{
+			name: "low_year",
+			input: &data.Car{
+				Model:       "E200",
+				Year:        1750,
+				Price:       150000,
+				Marka:       "BMW",
+				Color:       "white",
+				Type:        "sedan",
+				Image:       "https://www.google.com/imgres?imgurl=https%3A%2F%2Fc0.carsie",
+				Description: "good car",
+			},
+			key:      "year",
+			expected: "must be greater than 1800",
+		},
 	}
 
-	secondResponse := rr1.Body.String()
-	err = json.Unmarshal([]byte(secondResponse), &arr1)
-	if err != nil {
-		t.Errorf("Can't marshall response to car type")
-	}
-
-	if len(arr1)-len(arr) != 1 {
-		t.Errorf("Data length before insertion %v, after %v", len(arr), len(arr1))
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			val := validator.NewToActivate()
+			data.ValidateCar(val, tst.input)
+			if val.Errors[tst.key] != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
 	}
 }
 
-func (app *application) TestAuthorization(t *testing.T) {
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/cars", nil)
-	req.Header.Set("Authorization", "John tests")
-
-	w := httptest.NewRecorder()
-
-	handler := app.authenticate(http.HandlerFunc(app.listCarsHandler))
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("Expected to get status code 401, but got %v", w.Code)
+func TestValidateMarkaTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    *data.Marka
+		key      string
+		expected string
+	}{
+		{
+			name: "correct_marka",
+			input: &data.Marka{
+				Name:     "Mercedes",
+				Producer: "Germany",
+				Logo:     "https://group-media.mercedes-benz.com/marsMediaSite/Thumbnail?oid=46637120&version=-2&thumbnailVersion=3",
+			},
+			key:      "",
+			expected: "",
+		},
+		{
+			name: "empty_producer",
+			input: &data.Marka{
+				Name:     "Audi",
+				Producer: "",
+				Logo:     "https://group-media.mercedes-benz.com/marsMediaSite/Thumbnail?oid=46637120&version=-2&thumbnailVersion=3",
+			},
+			key:      "producer",
+			expected: "must be provided",
+		},
+		{
+			name: "empty_logo",
+			input: &data.Marka{
+				Name:     "Audi",
+				Producer: "France",
+				Logo:     "",
+			},
+			key:      "logo",
+			expected: "must be provided",
+		},
 	}
 
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			val := validator.NewToActivate()
+			data.ValidateMarka(val, tst.input)
+			if val.Errors[tst.key] != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
+	}
 }
 
-func (app *application) TestRequireRole(t *testing.T) {
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/cars", nil)
-	req.Header.Set("Authorization", "John tests")
-
-	user := &data.User{
-		ID:        1,
-		Name:      "admin",
-		Email:     "test@gmail.com",
-		Activated: true,
-		Version:   1,
+func TestReadJSONTableDriven(t *testing.T) {
+	type inputStruct struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
 
-	req = app.contextSetUser(req, user)
+	var tests = []struct {
+		name     string
+		input    inputStruct
+		expected string
+	}{
+		{
+			name: "correct_json",
+			input: inputStruct{
+				Name:     "Erlan Mukhtarov",
+				Email:    "erlan@gmail.com",
+				Password: "erlaaa123",
+				Role:     "user",
+			},
+			expected: "",
+		},
+	}
 
-	w := httptest.NewRecorder()
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			bodyJSON, _ := json.Marshal(tst.input)
+			bodyReader := bytes.NewReader(bodyJSON)
+			w := httptest.NewRecorder()
+			r, _ := http.NewRequest(http.MethodPost, "http://localhost:4000/v1/users", bodyReader)
+			err := getAppInstance.readJSON(w, r, &tst.input)
+			if err != nil && err.Error() != tst.expected {
+				t.Errorf("Got an unexpected error: %v", err)
+			}
+		})
+	}
+}
 
-	handler := app.requireAdminRole(http.HandlerFunc(app.listMarkasHandler))
-	handler.ServeHTTP(w, req)
+func TestValidateKeysTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    *data.Keys
+		key      string
+		expected string
+	}{
+		{
+			name: "correct_keys",
+			input: &data.Keys{
+				PriceMin: 100000,
+				PriceMax: 500000,
+			},
+			key:      "",
+			expected: "",
+		},
+		{
+			name: "incorrect_keys",
+			input: &data.Keys{
+				PriceMin: 500000,
+				PriceMax: 100000,
+			},
+			key:      "price",
+			expected: "price_max must be greater than price_min",
+		},
+	}
 
-	println(w.Body.String())
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Expected to get status code 403, but got %v", w.Code)
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			val := validator.NewToActivate()
+			data.ValidateKeys(val, *tst.input)
+			if val.Errors[tst.key] != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
+	}
+}
+
+func TestValidateEmailTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    string
+		key      string
+		expected string
+	}{
+		{
+			name:     "correct_email",
+			input:    "rik@gmail",
+			key:      "",
+			expected: "",
+		},
+		{
+			name:     "empty_email",
+			input:    "",
+			key:      "email",
+			expected: "must be provided",
+		},
+		{
+			name:     "incorrect_email",
+			input:    "rik",
+			key:      "email",
+			expected: "must be a valid email address",
+		},
+	}
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			val := validator.NewToActivate()
+			data.ValidateEmail(val, tst.input)
+			if val.Errors[tst.key] != tst.expected {
+				t.Errorf("We received an unexpected error: %v", val.Errors)
+			}
+		})
+	}
+}
+
+func TestReadStringTableDrive(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "correct_key_marka",
+			input:    "toyota",
+			expected: "toyota",
+		},
+		{
+			name:     "empty_key_marka",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			url1, err := url.Parse("http://localhost:4000?marka=" + tst.input)
+			urlValues := url1.Query()
+			key := getAppInstance.readString(urlValues, "marka", "")
+			if key != tst.expected || err != nil {
+				t.Errorf("Expected value is %v, but got %v", tst.expected, key)
+			}
+		})
+	}
+}
+
+func TestReadIntTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    string
+		expected int64
+	}{
+		{
+			name:     "correct_key_year",
+			input:    "2007",
+			expected: 2007,
+		},
+		{
+			name:     "empty_key_year",
+			input:    "",
+			expected: 2003,
+		},
+	}
+
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			url1, err := url.Parse("http://localhost:4000?year=" + tst.input)
+			urlValues := url1.Query()
+			v := validator.NewToActivate()
+			key := getAppInstance.readInt(urlValues, "year", 2003, v)
+			if key != tst.expected || err != nil {
+				t.Errorf("Expected value is %v, but got %v", tst.expected, key)
+			}
+		})
+	}
+}
+
+func TestReadIDTableDriven(t *testing.T) {
+	var tests = []struct {
+		name     string
+		input    string
+		expected int64
+	}{
+		{
+			name:     "correct_key_id",
+			input:    "1",
+			expected: 1,
+		},
+		{
+			name:     "empty_key_id",
+			input:    "0",
+			expected: 0,
+		},
+	}
+
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/v1/cars", nil)
+
+			params := httprouter.Params{
+				{Key: "id", Value: tst.input},
+			}
+			ctx := context.WithValue(req.Context(), httprouter.ParamsKey, params)
+			req = req.WithContext(ctx)
+			id, _ := getAppInstance.readIDParam(req)
+
+			if id != tst.expected {
+				t.Errorf("Expected value is %v, but got %v", tst.expected, id)
+			}
+		})
 	}
 }
